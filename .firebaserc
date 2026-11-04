@@ -1,5 +1,6 @@
 {
   "projects": {
-    "default": "demo-latox"
+    "default": "demo-latox",
+    "prod": "latox-6684a"
   }
 }
