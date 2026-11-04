@@ -32,8 +32,6 @@ jobs:
       - name: Integration tests (Firebase emulators)
         working-directory: .
         run: npx firebase-tools@15 emulators:exec --only auth,firestore,storage --project demo-latox "npm --prefix functions test"
-        env:
-          FIREBASE_CLI_EXPERIMENTS: webframeworks
       - run: npm run build
 
   web:

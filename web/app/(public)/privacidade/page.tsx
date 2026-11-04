@@ -25,7 +25,7 @@ function BaselinePolicy({ email, name }: { email: string; name: string }) {
       <h2>2. Quais dados este site coleta</h2>
       <p>
         <strong>Visitantes:</strong> o site não possui cadastro público, formulários de contato próprios, cookies de publicidade nem
-        ferramentas de rastreamento de terceiros. Os servidores de hospedagem (Google Firebase) registram dados técnicos de acesso — como
+        ferramentas de rastreamento de terceiros. Os servidores de hospedagem (Vercel e Google Firebase) registram dados técnicos de acesso — como
         endereço IP, data/hora e navegador — para segurança e prevenção de abusos. Endereços IP usados em limites de acesso são armazenados
         apenas em forma cifrada (hash) e por curto período.
       </p>
@@ -36,8 +36,10 @@ function BaselinePolicy({ email, name }: { email: string; name: string }) {
       <h2>3. Processos seletivos e formulários externos</h2>
       <p>
         As inscrições em processos seletivos <strong>não</strong> são feitas neste site. Ao clicar em “Realizar inscrição”, você é
-        direcionado(a) a uma plataforma externa (por exemplo, Google Forms ou Microsoft Forms), que coletará os dados informados no formulário
-        e possui política de privacidade própria. A {name} utiliza esses dados exclusivamente para conduzir o processo seletivo.
+        direcionado(a) ao formulário oficial no <strong>Google Forms</strong>, que coleta: <strong>nome completo, e-mail, curso e período</strong>.
+        As respostas ficam armazenadas na conta Google da {name} (Google Forms e Planilhas Google), com acesso restrito à diretoria
+        responsável pela seleção, e são usadas exclusivamente para conduzir e comunicar o processo seletivo. O Google atua como operador
+        desses dados e possui política de privacidade própria. Após a inscrição, você recebe por e-mail um número de inscrição.
       </p>
       <p>
         Nos resultados publicados neste site, candidatos são identificados apenas pelo número de inscrição/protocolo. Não publicamos CPF,
@@ -50,9 +52,9 @@ function BaselinePolicy({ email, name }: { email: string; name: string }) {
       </p>
       <h2>5. Retenção</h2>
       <p>
-        Registros técnicos de segurança: até 6 meses. Registros de auditoria do painel: até 5 anos. Dados de inscrição coletados em
-        formulários externos: pelo tempo necessário à conclusão do processo seletivo e eventuais recursos, sendo excluídos após esse período,
-        salvo obrigação legal ou institucional de guarda.
+        Registros técnicos de segurança: até 6 meses. Registros de auditoria do painel: até 5 anos. Dados de inscrição coletados no
+        formulário: até 6 meses após a divulgação do resultado final (prazo que cobre eventuais recursos), sendo então excluídos do
+        formulário e da planilha, salvo obrigação legal ou institucional de guarda.
       </p>
       <h2>6. Direitos do titular</h2>
       <p>

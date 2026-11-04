@@ -1,7 +1,6 @@
 import type { NextConfig } from "next";
 
 const isDev = process.env.NODE_ENV !== "production";
-const apiUrl = process.env.API_INTERNAL_URL ?? "http://127.0.0.1:5001/demo-latox/southamerica-east1/api";
 
 /**
  * Content Security Policy. 'unsafe-inline' for scripts is required by Next.js hydration
@@ -49,11 +48,6 @@ const nextConfig: NextConfig = {
         ],
       },
     ];
-  },
-  async rewrites() {
-    // In production Firebase Hosting rewrites /api/** to the function before Next.js.
-    // In development we proxy to the Functions emulator so cookies stay same-origin.
-    return isDev ? [{ source: "/api/:path*", destination: `${apiUrl}/api/:path*` }] : [];
   },
 };
 

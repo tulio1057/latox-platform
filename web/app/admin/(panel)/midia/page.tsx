@@ -112,7 +112,7 @@ export default function MediaPage() {
             </label>
           </div>
           <p className="muted" style={{ fontSize: "0.82rem", marginBottom: 0 }}>
-            Permitidos: JPG, PNG, WEBP e PDF (até 15 MB). Imagens são convertidas para WEBP e têm metadados (ex.: localização GPS) removidos. PDFs com scripts ou anexos embutidos são recusados.
+            Permitidos: JPG, PNG, WEBP e PDF (até 4 MB; editais maiores podem ser publicados como link externo). Imagens são convertidas para WEBP e têm metadados (ex.: localização GPS) removidos. PDFs com scripts ou anexos embutidos são recusados.
           </p>
         </section>
       )}

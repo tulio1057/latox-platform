@@ -34,7 +34,7 @@ export async function createSession(uid: string, req: Request, opts: { reauth?: 
     expiresAt: Timestamp.fromMillis(now + config.session.absoluteTtlMs),
     reauthAt: opts.reauth ? Timestamp.fromMillis(now) : null,
     userAgent: String(req.get("user-agent") ?? "").slice(0, 200),
-    ipHash: hashIp(req.ip),
+    ipHash: hashIp(req.clientIp),
   };
   await sessions().doc(sha256(sessionId)).set(doc);
   return { sessionId, csrfToken, docId: sha256(sessionId), expiresAt: now + config.session.absoluteTtlMs };

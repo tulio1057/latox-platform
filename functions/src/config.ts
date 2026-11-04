@@ -34,7 +34,8 @@ export const config = {
   },
   limits: {
     jsonBodyBytes: 512 * 1024,
-    uploadBytes: 15 * 1024 * 1024,
+    /** 4 MB: stays under the request-size limits of the Vercel proxy in front of the API. */
+    uploadBytes: 4 * 1024 * 1024,
     imageMaxPixels: 40_000_000,
     maxPageSize: 50,
   },
@@ -44,6 +45,11 @@ export const config = {
    * client injects on the left cannot spoof it. Verify in staging (see docs/security).
    */
   trustProxyHops: Number.parseInt(process.env.TRUST_PROXY_HOPS ?? "1", 10),
+  /**
+   * Shared secret between the website proxy (Vercel) and this API. When set, requests
+   * without it are rejected (see lib/proxy.ts). Empty in the emulator and tests.
+   */
+  proxySecret: process.env.API_PROXY_SECRET ?? "",
   /** Salt for hashing IPs in logs/rate limits so raw IPs are never stored. */
   ipHashSalt: process.env.IP_HASH_SALT ?? "dev-only-salt",
 };

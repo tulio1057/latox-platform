@@ -3,6 +3,7 @@ import { config } from "./config";
 import { requireCsrf, requireSession, requireTrustedOrigin } from "./auth/middleware";
 import { CONTENT_TYPES } from "./lib/content";
 import { errorHandler, HttpError, notFoundHandler } from "./lib/errors";
+import { trustedProxy } from "./lib/proxy";
 import { memoryRateLimit } from "./lib/rateLimit";
 import { authRouter } from "./routes/auth";
 import { contentRouter } from "./routes/admin/content";
@@ -68,9 +69,10 @@ export function createApp() {
   const app = express();
   app.disable("x-powered-by");
   app.set("trust proxy", config.trustProxyHops);
-  app.use(securityHeaders, cors, bodySizeGuard, requireJsonOrMultipart);
+  app.use(securityHeaders, trustedProxy, cors, bodySizeGuard, requireJsonOrMultipart);
   app.use(express.json({ limit: config.limits.jsonBodyBytes, strict: true }));
-  app.use(memoryRateLimit({ windowMs: 60 * 1000, max: 300 }));
+  const globalLimit = memoryRateLimit({ windowMs: 60 * 1000, max: 300 });
+  app.use((req, res, next) => (req.fromSsr ? next() : globalLimit(req, res, next)));
 
   const v1 = Router();
   v1.get("/health", (_req, res) => {
@@ -81,7 +83,7 @@ export function createApp() {
 
   const admin = Router();
   admin.use(requireTrustedOrigin, requireSession, requireCsrf);
-  admin.use(memoryRateLimit({ windowMs: 60 * 1000, max: 120, key: (req) => `admin:${req.admin?.uid ?? req.ip}` }));
+  admin.use(memoryRateLimit({ windowMs: 60 * 1000, max: 120, key: (req) => `admin:${req.admin?.uid ?? req.clientIp}` }));
   admin.use("/dashboard", dashboardRouter());
   admin.use("/news", contentRouter(CONTENT_TYPES.news));
   admin.use("/projects", contentRouter(CONTENT_TYPES.projects));

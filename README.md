@@ -9,7 +9,8 @@ Site oficial e painel administrativo da **Liga Acadêmica de Toxicologia (LATox)
 | Banco de dados | Cloud Firestore (acesso só pelo servidor) | regras em [`firestore.rules`](firestore.rules) |
 | Arquivos | Cloud Storage (privado, servido pela API) | regras em [`storage.rules`](storage.rules) |
 | Autenticação | Firebase Auth / Identity Platform — senha + **TOTP obrigatório** | |
-| Hospedagem | Firebase Hosting (Next.js SSR) com rewrite `/api/**` → função | [`firebase.json`](firebase.json) |
+| Hospedagem | **Vercel** (site, região São Paulo) com proxy `/api/**` → **Firebase Cloud Functions** | [`web/middleware.ts`](web/middleware.ts), [`firebase.json`](firebase.json) |
+| Inscrições | Google Forms criado por Apps Script, com nº de inscrição | [`integrations/google-forms/`](integrations/google-forms/) |
 
 Documentação:
 
@@ -17,7 +18,8 @@ Documentação:
 - [Modelo de dados (Firestore)](docs/database/README.md)
 - [API](docs/api/README.md)
 - [Controles de segurança e riscos residuais](docs/security/README.md)
-- [Deploy, backup/restauração e resposta a incidentes](docs/deployment/README.md)
+- [Deploy (Vercel + Firebase), backup/restauração e resposta a incidentes](docs/deployment/README.md)
+- [Formulário de inscrição no Google Forms](integrations/google-forms/README.md)
 
 ## Desenvolvimento local
 
@@ -38,7 +40,7 @@ cp functions/.env.example functions/.env.local && cp web/.env.example web/.env.l
 Terminal 1 — emuladores (Auth, Firestore, Storage, Functions):
 
 ```bash
-npm --prefix functions run build && FIREBASE_CLI_EXPERIMENTS=webframeworks firebase emulators:start --only auth,firestore,storage,functions --project demo-latox
+npm --prefix functions run build && firebase emulators:start --only auth,firestore,storage,functions --project demo-latox
 ```
 
 Terminal 2 — dados de desenvolvimento (itens marcados `[DEMO]` + admin local; credenciais gravadas em `functions/.dev-admin.local.txt`, ignorado pelo Git):
@@ -65,7 +67,7 @@ npm --prefix functions run test:emu
 npm --prefix web test
 ```
 
-API: 42 testes de integração contra os emuladores (autenticação/MFA, sessões, CSRF, RBAC, IDOR, mass assignment, XSS, injeção, uploads maliciosos, resultados, auditoria, rate limit). Web: testes de componentes do redirecionamento de inscrição, links seguros e open redirect.
+API: 46 testes de integração contra os emuladores (autenticação/MFA, sessões, CSRF, RBAC, IDOR, mass assignment, XSS, injeção, uploads maliciosos, resultados, auditoria, rate limit, proteção do proxy). Web: testes de componentes do redirecionamento de inscrição, links seguros e open redirect.
 
 ## Estado do projeto
 

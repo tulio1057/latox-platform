@@ -18,12 +18,13 @@ Referências: OWASP Top 10:2025 e OWASP ASVS 5.0. Este documento descreve o que 
 | Mass assignment | schemas `.strict()`; status/autoria só pelo servidor | `schemas.ts` | `content.test.ts` |
 | IDOR / manipulação de IDs | regex de IDs, existência verificada, autorização por papel em todo acesso; público só vê `published` | `content.ts`, `public.ts` | `content.test.ts` |
 | Conteúdo não publicado | filtro `status=published && publishAt<=agora` + allow-list de campos | `lib/content.ts` | `content.test.ts` |
-| Upload malicioso | extensão permitida + MIME declarado + assinatura (magic bytes) + 15 MB; imagens re-codificadas em WEBP (remove EXIF/GPS e payloads anexados, limite de pixels); PDFs com JavaScript/Launch/EmbeddedFile/XFA recusados; nome gerado no servidor; bucket privado; servido com `nosniff` e CSP `sandbox` | `lib/media.ts`, `routes/admin/media.ts` | `media-users.test.ts` |
+| Upload malicioso | extensão permitida + MIME declarado + assinatura (magic bytes) + 4 MB; imagens re-codificadas em WEBP (remove EXIF/GPS e payloads anexados, limite de pixels); PDFs com JavaScript/Launch/EmbeddedFile/XFA recusados; nome gerado no servidor; bucket privado; servido com `nosniff` e CSP `sandbox` | `lib/media.ts`, `routes/admin/media.ts` | `media-users.test.ts` |
 | Open redirect | redirecionamento pós-login limitado a `/admin…`; links externos validados (`https`, sem credenciais) | `lib/admin-api.ts`, `lib/fields.ts` | `web/tests` |
 | Inscrição externa | link só exibido com status "Inscrições abertas"; `target=_blank rel="noopener noreferrer"`, `referrerpolicy=no-referrer`; nenhum dado na URL; aviso de plataforma externa | `RegistrationCta.tsx` | `web/tests`, `selection.test.ts` |
 | SSRF | o servidor nunca busca URLs fornecidas por usuários | — | — |
+| Acesso direto à API | segredo compartilhado Vercel→função (`API_PROXY_SECRET`), comparação em tempo constante; sem ele só `/health` responde | `lib/proxy.ts`, `web/middleware.ts` | `proxy.test.ts` |
 | Clickjacking | `X-Frame-Options: DENY` + `frame-ancestors 'none'` | `next.config.ts`, `app.ts` | verificado no navegador |
-| DoS (aplicação) | limites de corpo (512 KB JSON / 15 MB upload), paginação ≤ 50, timeouts da função, `maxInstances`, rate limit | `app.ts`, `index.ts` | `content.test.ts` |
+| DoS (aplicação) | limites de corpo (512 KB JSON / 4 MB upload), paginação ≤ 50, timeouts da função, `maxInstances`, rate limit | `app.ts`, `index.ts` | `content.test.ts` |
 | Vazamento de erros | handler sem stack trace em produção | `lib/errors.ts` | `auth.test.ts` |
 | Auditoria | login/logout/falhas, convites, papéis, publicações, exclusões, resultados, uploads, configurações, acessos negados; somente inserção; espelhado no Cloud Logging; filtro que impede gravar campos com nomes de segredo | `lib/audit.ts` | vários |
 | Dados de candidatos | resultados só aceitam `protocol/position/situation` | `schemas.ts` | `selection.test.ts` |
@@ -33,7 +34,7 @@ Referências: OWASP Top 10:2025 e OWASP ASVS 5.0. Este documento descreve o que 
 
 1. **CSP com `'unsafe-inline'` em `script-src`** — necessário para a hidratação do Next.js sem nonce por requisição (que impediria cache em CDN). Mitigado pela sanitização no servidor. Melhoria: CSP com nonce via middleware.
 2. **Sem antivírus real** nos uploads. A verificação de PDF é heurística (streams comprimidos podem esconder conteúdo). Recomendado: Cloud Run com ClamAV acionado por evento do Storage, ou restringir PDFs a quem tem `media:delete`.
-3. **IP de cliente atrás de proxies**: `TRUST_PROXY_HOPS=1` assume um proxy (Google Front End). Em homologação, registre `req.ips` e ajuste; valor errado enfraquece o rate limit por IP.
+3. **IP de cliente**: em produção vem de `x-real-ip` (definido pelo Vercel) em requisições autenticadas pelo `API_PROXY_SECRET`. Se o segredo vazar, um atacante poderia forjar IPs e contornar o rate limit — rotacione-o. Leituras SSR autenticadas não passam pelo limite por IP (são somente GET públicos com cache).
 4. **Rate limit não substitui WAF/anti-DDoS.** Considerar Cloud Armor (via Load Balancer) e App Check.
 5. **Passkeys/WebAuthn** não implementados (TOTP apenas).
 6. **Recuperação de conta MFA**: se o administrador perder o autenticador, um Super Admin precisa remover o fator pelo Console do Firebase/Identity Platform — procedimento manual que deve ser documentado internamente com verificação de identidade.

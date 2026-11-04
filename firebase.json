@@ -4,8 +4,20 @@
       "source": "functions",
       "codebase": "api",
       "runtime": "nodejs22",
-      "ignore": ["node_modules", ".git", "test", "*.log", "src", ".env.local"],
-      "predeploy": ["npm --prefix \"$RESOURCE_DIR\" run lint", "npm --prefix \"$RESOURCE_DIR\" run build"]
+      "ignore": [
+        "node_modules",
+        ".git",
+        "test",
+        "*.log",
+        "src",
+        ".env.local",
+        "*.local.txt",
+        ".env.example"
+      ],
+      "predeploy": [
+        "npm --prefix \"$RESOURCE_DIR\" run lint",
+        "npm --prefix \"$RESOURCE_DIR\" run build"
+      ]
     }
   ],
   "firestore": {
@@ -15,35 +27,23 @@
   "storage": {
     "rules": "storage.rules"
   },
-  "hosting": {
-    "source": "web",
-    "ignore": ["firebase.json", "**/.*", "**/node_modules/**"],
-    "frameworksBackend": {
-      "region": "southamerica-east1",
-      "maxInstances": 10,
-      "memory": "512MiB"
-    },
-    "rewrites": [
-      { "source": "/api/**", "function": { "functionId": "api", "region": "southamerica-east1" } }
-    ],
-    "headers": [
-      {
-        "source": "**",
-        "headers": [
-          { "key": "Strict-Transport-Security", "value": "max-age=63072000; includeSubDomains; preload" },
-          { "key": "X-Content-Type-Options", "value": "nosniff" },
-          { "key": "Referrer-Policy", "value": "strict-origin-when-cross-origin" },
-          { "key": "Permissions-Policy", "value": "camera=(), microphone=(), geolocation=(), payment=()" }
-        ]
-      }
-    ]
-  },
   "emulators": {
-    "auth": { "port": 9099 },
-    "functions": { "port": 5001 },
-    "firestore": { "port": 8080 },
-    "storage": { "port": 9199 },
-    "ui": { "enabled": true, "port": 4000 },
+    "auth": {
+      "port": 9099
+    },
+    "functions": {
+      "port": 5001
+    },
+    "firestore": {
+      "port": 8080
+    },
+    "storage": {
+      "port": 9199
+    },
+    "ui": {
+      "enabled": true,
+      "port": 4000
+    },
     "singleProjectMode": true
   }
 }

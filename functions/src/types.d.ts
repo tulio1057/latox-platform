@@ -20,6 +20,10 @@ declare global {
       admin?: AdminContext;
       adminSession?: SessionContext;
       rawBody?: Buffer;
+      /** Real visitor IP (see lib/proxy.ts). */
+      clientIp?: string;
+      /** Authenticated server-side rendering request from the website. */
+      fromSsr?: boolean;
     }
   }
 }

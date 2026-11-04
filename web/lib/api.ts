@@ -13,7 +13,11 @@ async function get<T>(path: string, fallback: T, opts: { notFound?: boolean } = 
   try {
     const res = await fetch(`${BASE}/api/v1/public${path}`, {
       next: { revalidate: 60 },
-      headers: { Accept: "application/json" },
+      headers: {
+        Accept: "application/json",
+        // Authenticates this server-side render to the API (see functions/src/lib/proxy.ts).
+        ...(process.env.API_PROXY_SECRET ? { "x-latox-proxy": process.env.API_PROXY_SECRET, "x-latox-ssr": "1" } : {}),
+      },
       signal: AbortSignal.timeout(8000),
     });
     if (res.status === 404 && opts.notFound) throw new ApiNotFound(path);

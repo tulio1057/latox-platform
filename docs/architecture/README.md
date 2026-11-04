@@ -1,23 +1,26 @@
 # Arquitetura
 
 ```
-Navegador ──HTTPS──► Firebase Hosting (CDN)
-                       ├── /api/**  ──rewrite──► Cloud Function "api" (Express, southamerica-east1)
-                       │                            ├── Firestore (Admin SDK)
-                       │                            ├── Cloud Storage (Admin SDK)
-                       │                            └── Firebase Auth (verificação de ID token)
-                       └── demais rotas ─────────► Next.js SSR (função gerada pelo Hosting)
-                                                    └── busca dados públicos em /api/v1/public (cache 60 s)
+Navegador ──HTTPS──► Vercel (Next.js, gru1)
+                       ├── /api/**  ──middleware proxy + segredo──► Cloud Function "api" (Express, southamerica-east1)
+                       │                                              ├── Firestore (Admin SDK)
+                       │                                              ├── Cloud Storage (Admin SDK)
+                       │                                              └── Firebase Auth (verificação de ID token)
+                       └── páginas ─► SSR/ISR, busca /api/v1/public direto na função (com segredo, cache 60 s)
+
+Inscrições ──► Google Forms da liga (Apps Script gera nº de inscrição) — fora do site
 ```
 
 ## Decisões
 
-- **Mesma origem para site e API.** O Hosting reescreve `/api/**` para a função, então cookies são `SameSite=Strict`, não há CORS em produção e o CSRF fica restrito. O Hosting só repassa o cookie chamado `__session` — por isso é esse o nome do cookie de sessão.
+- **Mesma origem para site e API.** O middleware do Next.js (`web/middleware.ts`) repassa `/api/**` para a função; o navegador só vê o domínio do Vercel, então cookies são `SameSite=Strict`, não há CORS e o CSRF fica restrito.
+- **Porta de entrada única.** A função exige o header `x-latox-proxy` com `API_PROXY_SECRET`; chamadas diretas são recusadas (exceto `/health`). O IP do visitante vem de `x-real-ip`, que o Vercel sobrescreve (não pode ser forjado por quem passa pelo site).
 - **Firestore e Storage fechados para clientes.** As regras negam tudo; somente a API (Admin SDK) acessa dados. Toda autorização é feita no backend.
 - **Sessões no servidor.** O login no navegador usa o SDK do Firebase (senha + TOTP) apenas para obter um ID token de curta duração; a API o verifica (MFA obrigatório, autenticação recente, conta ativa) e cria uma sessão própria: identificador aleatório de 256 bits em cookie HttpOnly, armazenado como hash SHA-256 no Firestore, com token CSRF por sessão, expiração absoluta (8 h) e por inatividade (1 h).
 - **Conteúdo público projetado.** A API pública devolve apenas campos de uma allow-list e somente itens `published` cuja data de publicação já passou (suporta agendamento).
 - **Next.js com ISR.** Páginas públicas são renderizadas no servidor e revalidadas a cada 60 s; falhas da API degradam para estados vazios em vez de erro.
-- **Sem pacotes internos compartilhados.** `web/` e `functions/` são pacotes independentes porque o deploy de Functions e do Hosting não resolve dependências de workspace; o contrato é a API documentada.
+- **Sem pacotes internos compartilhados.** `web/` (Vercel, Root Directory `web`) e `functions/` (Firebase) são implantados separadamente; o contrato é a API documentada.
+- **Uploads até 4 MB**, para caber no limite de requisição do proxy do Vercel. Editais maiores entram como link externo.
 
 ## Módulos da API (`functions/src`)
 
