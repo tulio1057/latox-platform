@@ -1,0 +1,11 @@
+rules_version = '2';
+
+// Uploaded files are private. They are written and served exclusively by the API,
+// which validates type/signature/size and checks visibility before streaming.
+service firebase.storage {
+  match /b/{bucket}/o {
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+  }
+}

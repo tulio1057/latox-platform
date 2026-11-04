@@ -1,0 +1,12 @@
+node_modules/
+.firebase/
+*.log
+firebase-debug.log*
+firestore-debug.log*
+ui-debug.log*
+.env
+.env.*
+!.env.example
+*.local.txt
+# Original logo file as received (a copy lives in web/public/brand)
+WhatsApp Image *.jpeg

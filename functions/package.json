@@ -1,0 +1,42 @@
+{
+  "name": "latox-api",
+  "version": "1.0.0",
+  "description": "LATox REST API (Express on Cloud Functions)",
+  "main": "lib/index.js",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "lint": "eslint src test",
+    "test": "vitest run",
+    "test:emu": "firebase emulators:exec --only auth,firestore,storage --project demo-latox \"vitest run\"",
+    "provision-admin": "node lib/scripts/provision-admin.js",
+    "seed:dev": "node lib/scripts/seed-dev.js"
+  },
+  "license": "UNLICENSED",
+  "dependencies": {
+    "busboy": "^1.6.0",
+    "express": "^5.3.0",
+    "firebase-admin": "^14.5.0",
+    "firebase-functions": "^7.4.0",
+    "sanitize-html": "^2.18.1",
+    "sharp": "^0.35.5",
+    "zod": "^4.6.7"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "@types/busboy": "^1.5.5",
+    "@types/express": "^5.0.6",
+    "@types/node": "^26.6.6",
+    "@types/sanitize-html": "^2.16.2",
+    "@types/supertest": "^7.2.1",
+    "eslint": "^10.14.0",
+    "supertest": "^7.3.1",
+    "typescript": "^6.0.3",
+    "typescript-eslint": "^8.72.1",
+    "vitest": "^5.1.0"
+  },
+  "private": true,
+  "engines": {
+    "node": "22"
+  }
+}
