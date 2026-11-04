@@ -173,6 +173,15 @@ export default function UsersPage() {
                                 Reativar
                               </button>
                             ))}
+                          {!self && u.mfaEnrolled && (
+                            <button
+                              className="btn btn-ghost btn-sm"
+                              title="Use quando a pessoa perder o celular e os códigos de recuperação. Confirme a identidade dela por outro canal antes."
+                              onClick={() => void op(u, "Redefinir autenticação em dois fatores", () => admin.post(`/users/${u.uid}/reset-mfa`), true)}
+                            >
+                              Redefinir 2FA
+                            </button>
+                          )}
                           <button className="btn btn-ghost btn-sm" onClick={() => void op(u, "Revogar todas as sessões", () => admin.post(`/users/${u.uid}/revoke-sessions`), true)}>
                             Revogar sessões
                           </button>

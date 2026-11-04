@@ -4,24 +4,18 @@
       "collectionGroup": "auditLogs",
       "queryScope": "COLLECTION",
       "fields": [
-        { "fieldPath": "actorUid", "order": "ASCENDING" },
-        { "fieldPath": "at", "order": "DESCENDING" }
+        {
+          "fieldPath": "actorUid",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "at",
+          "order": "DESCENDING"
+        }
       ]
     }
   ],
   "fieldOverrides": [
-    {
-      "collectionGroup": "adminSessions",
-      "fieldPath": "expiresAt",
-      "ttl": true,
-      "indexes": []
-    },
-    {
-      "collectionGroup": "rateLimits",
-      "fieldPath": "expireAt",
-      "ttl": true,
-      "indexes": []
-    },
     {
       "collectionGroup": "contentRevisions",
       "fieldPath": "snapshot",

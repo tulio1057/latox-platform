@@ -128,7 +128,7 @@ function AuditInner() {
         </div>
       )}
       <p className="muted" style={{ fontSize: "0.8rem", marginTop: 12 }}>
-        Registros de auditoria não podem ser alterados ou excluídos pelo painel. Uma cópia é mantida no Cloud Logging.
+        Registros de auditoria não podem ser alterados ou excluídos pelo painel. Os registros entram nos backups semanais.
       </p>
     </>
   );

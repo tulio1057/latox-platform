@@ -1,163 +1,118 @@
-# Deploy, backup e resposta a incidentes
+# Deploy (custo zero), backup e resposta a incidentes
 
-Topologia de produção:
+Tudo roda em planos gratuitos, **sem cartão de crédito**:
 
 ```
-Visitante ──HTTPS──► Vercel (Next.js, região gru1/São Paulo)
-                       ├── páginas: SSR/ISR, busca dados em API_INTERNAL_URL (+ segredo)
-                       └── /api/**  ──middleware (proxy + segredo)──► Firebase Cloud Function "api"
-                                                                        (southamerica-east1)
-                                                                        ├── Firestore
-                                                                        ├── Cloud Storage
-                                                                        └── Firebase Auth
+Visitante ──HTTPS──► Vercel projeto "latox" (Next.js, raiz web/, região gru1)
+                       ├── páginas: SSR/ISR, busca dados na API (+ segredo)
+                       └── /api/**  ──middleware (proxy + segredo + IP do visitante)──►
+                                    Vercel projeto "latox-api" (Express, raiz functions/, gru1)
+                                       ├── Firebase Firestore (Spark) — dados e arquivos
+                                       └── Firebase Auth (Spark) — senha; o 2º fator TOTP é verificado pela API
+
+Inscrições ──► Google Forms da liga (Apps Script gera nº de inscrição)
+Backups    ──► GitHub Actions semanal, criptografado
 ```
 
-O navegador só conversa com o domínio do Vercel. O cookie de sessão continua first-party (`SameSite=Strict`) e a API recusa chamadas sem o segredo `API_PROXY_SECRET`, então ninguém consegue chamá-la diretamente por fora do site.
+Limites gratuitos relevantes: Firestore 1 GiB armazenados, 50 mil leituras e 20 mil gravações por dia; Vercel Hobby (uso não comercial), corpo de requisição até 4,5 MB (uploads limitados a 4 MB), 1 cron por dia.
 
-## 1. Firebase (banco, arquivos, autenticação e API)
+## 1. Firebase (projeto `latox-6684a`, plano Spark)
 
-1. Crie o projeto em https://console.firebase.google.com (ex.: `latox-prod`). Para homologação, crie outro (`latox-hml`).
-2. **Plano Blaze** (Uso e faturamento → Modificar plano). Exigido por Cloud Functions e Storage. Configure um **alerta de orçamento** (ex.: R$ 20/mês) em console.cloud.google.com/billing → Orçamentos e alertas.
-3. **Authentication → Começar → E-mail/senha** ativado. Depois **Configurações → "Fazer upgrade para o Identity Platform"**.
-4. Em *Authentication → Configurações → Ações do usuário*: **desmarque "Permitir criação"** (sem cadastro público).
-5. Ative o segundo fator **TOTP** (não há botão no console). No terminal, com uma conta de proprietário do projeto:
+1. **Firestore** — já criado em `southamerica-east1`. Publicar regras e índices:
 
 ```bash
-gcloud auth login
+firebase deploy --only firestore --project latox-6684a
 ```
 
-```bash
-curl -X PATCH "https://identitytoolkit.googleapis.com/admin/v2/projects/PROJECT_ID/config?updateMask=mfa" -H "Authorization: Bearer $(gcloud auth print-access-token)" -H "Content-Type: application/json" -H "X-Goog-User-Project: PROJECT_ID" -d '{"mfa":{"state":"ENABLED","providerConfigs":[{"state":"ENABLED","totpProviderConfig":{"adjacentIntervals":1}}]}}'
-```
+2. **Authentication** → *Começar* → ativar **E-mail/senha**. Em *Configurações → Domínios autorizados*, adicione o domínio do site no Vercel (ex.: `latox.vercel.app`).
+3. *Authentication → Modelos → Redefinição de senha*: ajuste o texto (é o e-mail dos convites).
+4. **Conta de serviço** (credencial da API): *Configurações do projeto → Contas de serviço → Gerar nova chave privada*. Baixa um `.json` — **é um segredo**: não envie por chat/e-mail, não coloque no Git. Ele será colado só nas variáveis do Vercel e do GitHub, e o arquivo pode ser apagado depois.
+5. No Google Cloud Console → *APIs e serviços → Credenciais*, restrinja a **API key** do app Web por referenciador HTTP ao domínio do site.
 
-6. *Authentication → Configurações → Domínios autorizados*: adicione o domínio do Vercel (ex.: `latox.vercel.app`) e o domínio próprio, se houver.
-7. **Firestore Database → Criar** (modo produção, local `southamerica-east1`). **Storage → Começar** (mesma região).
-8. *Configurações do projeto → Seus apps → Web (`</>`)*: registre um app e anote `apiKey`, `authDomain`, `projectId`. No Google Cloud Console → *APIs e serviços → Credenciais*, restrinja essa API key por **referenciador HTTP** ao domínio do site.
-9. *Authentication → Modelos → Redefinição de senha*: ajuste o texto (é o e-mail usado nos convites de administradores).
+## 2. Vercel — projeto da API (`latox-api`)
 
-### Variáveis da API
-
-Crie `functions/.env.PROJECT_ID` (não vai para o Git). Gere os dois segredos uma vez e guarde-os num gerenciador de senhas:
-
-```bash
-node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
-```
-
-```
-ALLOWED_ORIGINS=https://latox.vercel.app
-API_PROXY_SECRET=<segredo 1 — o MESMO valor vai para o Vercel>
-IP_HASH_SALT=<segredo 2>
-TRUST_PROXY_HOPS=1
-LATOX_REGION=southamerica-east1
-```
-
-> `ALLOWED_ORIGINS` precisa conter exatamente a URL pela qual as pessoas acessam o painel (sem barra no final). Deploys de *preview* do Vercel têm outra URL e, por segurança, não conseguem fazer login no painel.
-
-### Deploy da API, regras e índices
-
-```bash
-firebase login
-```
-
-```bash
-firebase use --add
-```
-
-```bash
-firebase deploy --only functions,firestore,storage
-```
-
-A URL da função aparece no fim do deploy, no formato `https://southamerica-east1-PROJECT_ID.cloudfunctions.net/api`. Teste:
-
-```bash
-curl https://southamerica-east1-PROJECT_ID.cloudfunctions.net/api/api/v1/health
-```
-
-Deve responder `{"ok":true}`. Qualquer outra rota sem o segredo responde 403 (esperado).
-
-Depois do primeiro deploy, confirme no console: índices criados e políticas TTL ativas (`adminSessions.expiresAt`, `rateLimits.expireAt`).
-
-## 2. Vercel (site e painel)
-
-1. Em https://vercel.com/new importe o repositório `tulio1057/latox-platform`.
-2. **Root Directory: `web`**. Framework: Next.js (detectado).
-3. **Environment Variables** (Production):
+1. https://vercel.com/new → importe `tulio1057/latox-platform` → nome `latox-api` → **Root Directory: `functions`**. O `functions/vercel.json` já define build, região `gru1` e o cron diário.
+2. *Environment Variables* (Production):
 
 | Nome | Valor |
 |---|---|
-| `API_INTERNAL_URL` | `https://southamerica-east1-PROJECT_ID.cloudfunctions.net/api` |
-| `API_PROXY_SECRET` | segredo 1 (o mesmo da API) — **sem** prefixo `NEXT_PUBLIC_` |
-| `NEXT_PUBLIC_SITE_URL` | `https://latox.vercel.app` (ou o domínio próprio) |
+| `FIREBASE_SERVICE_ACCOUNT` | conteúdo inteiro do `.json` da conta de serviço |
+| `ALLOWED_ORIGINS` | URL do site, ex.: `https://latox.vercel.app` (sem barra final) |
+| `API_PROXY_SECRET` | segredo A (gerado — ver `vercel-env.local.txt`) |
+| `TOTP_ENC_KEY` | segredo B (64 hex). Se perdido, todos recadastram o autenticador |
+| `CRON_SECRET` | segredo C |
+| `IP_HASH_SALT` | segredo D |
+
+3. Deploy. Teste: `https://latox-api.vercel.app/api/v1/health` → `{"ok":true}`. Qualquer outra rota sem o segredo responde 403 (esperado).
+
+## 3. Vercel — projeto do site (`latox`)
+
+1. Importe o mesmo repositório de novo → nome `latox` → **Root Directory: `web`**.
+2. *Environment Variables* (Production):
+
+| Nome | Valor |
+|---|---|
+| `API_INTERNAL_URL` | `https://latox-api.vercel.app` |
+| `API_PROXY_SECRET` | **o mesmo** segredo A |
+| `NEXT_PUBLIC_SITE_URL` | `https://latox.vercel.app` |
 | `NEXT_PUBLIC_FIREBASE_API_KEY` | do app Web do Firebase |
-| `NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN` | `PROJECT_ID.firebaseapp.com` |
-| `NEXT_PUBLIC_FIREBASE_PROJECT_ID` | `PROJECT_ID` |
+| `NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN` | `latox-6684a.firebaseapp.com` |
+| `NEXT_PUBLIC_FIREBASE_PROJECT_ID` | `latox-6684a` |
 | `NEXT_PUBLIC_USE_AUTH_EMULATOR` | `false` |
 
-4. **Deploy**. A cada push na `main`, o Vercel publica de novo automaticamente.
-5. Domínio próprio (opcional): *Settings → Domains*. Depois atualize `NEXT_PUBLIC_SITE_URL`, `ALLOWED_ORIGINS` (e refaça o deploy da API) e os domínios autorizados do Firebase Auth.
+3. Deploy. Se a URL final for diferente de `latox.vercel.app`, atualize `ALLOWED_ORIGINS` (API) e `NEXT_PUBLIC_SITE_URL` (site) e faça *Redeploy* dos dois. Deploys de *preview* não conseguem logar no painel (proteção de origem) — esperado.
 
-## 3. Primeiro Super Admin (sem conta padrão)
+## 4. Primeiro Super Admin (sem conta padrão)
+
+Com o `.json` da conta de serviço numa pasta local (fora do repositório):
 
 ```bash
-gcloud auth application-default login
+cd functions && npm run build && GOOGLE_APPLICATION_CREDENTIALS=/caminho/latox-sa.json FIREBASE_PROJECT_ID=latox-6684a npm run provision-admin -- presidencia@seudominio.org "Nome Completo"
+```
+
+O script imprime um link de uso único para a pessoa definir a senha. No primeiro login em `/admin`, ela escaneia o QR code no aplicativo autenticador e recebe 8 códigos de recuperação (guardar offline). Os demais administradores são convidados pelo painel.
+
+## 5. Formulário de inscrição
+
+Ver [integrations/google-forms/README.md](../../integrations/google-forms/README.md).
+
+## 6. Backups
+
+Os backups gerenciados do Firestore exigem faturamento; por isso há um export lógico:
+
+- **Automático**: [`.github/workflows/backup.yml`](../../.github/workflows/backup.yml), toda segunda-feira, criptografado (AES-256/PBKDF2) e guardado 30 dias como artefato do GitHub. Configure em *GitHub → Settings → Secrets and variables → Actions*: `FIREBASE_SERVICE_ACCOUNT` (o `.json`) e `BACKUP_PASSPHRASE` (frase longa, guardada no gerenciador de senhas da liga). Baixe periodicamente um backup para o Drive institucional.
+- **Manual** (antes de mudanças grandes):
+
+```bash
+cd functions && npm run build && GOOGLE_APPLICATION_CREDENTIALS=/caminho/latox-sa.json FIREBASE_PROJECT_ID=latox-6684a npm run backup -- backup.json
+```
+
+- **Restauração** (teste **trimestral** num projeto Firebase de homologação, também Spark):
+
+```bash
+openssl enc -d -aes-256-cbc -pbkdf2 -iter 600000 -in backup.json.enc -out backup.json
 ```
 
 ```bash
-cd functions && npm run build && GCLOUD_PROJECT=PROJECT_ID npm run provision-admin -- presidencia@seudominio.org "Nome Completo"
+cd functions && GOOGLE_APPLICATION_CREDENTIALS=/caminho/latox-hml-sa.json FIREBASE_PROJECT_ID=latox-hml npm run restore -- backup.json --confirm latox-hml
 ```
 
-O script imprime um link de uso único para definir a senha. No primeiro login em `/admin`, o sistema exige configurar o aplicativo autenticador (TOTP). Os demais administradores são convidados pelo painel.
+Apague `backup.json` descriptografado após o uso.
 
-## 4. Formulário de inscrição
-
-Siga [integrations/google-forms/README.md](../../integrations/google-forms/README.md): o script cria o Google Forms (nome, e-mail, curso, período), gera números de inscrição e você cola o link no processo seletivo pelo painel.
-
-## 5. Checklist antes de divulgar
+## 7. Checklist antes de divulgar
 
 - [ ] Textos `[PREENCHER]` substituídos (Admin → Configurações), e-mail e Instagram oficiais.
-- [ ] Política de Privacidade revisada pela diretoria (a versão-base já descreve Vercel, Firebase e Google Forms).
-- [ ] `npm audit --omit=dev` sem vulnerabilidades altas em `functions/` e `web/`.
-- [ ] Teste em produção: login + TOTP, convite, publicação, upload, resultado, botão de inscrição abrindo o Forms.
-- [ ] Conferir no log de auditoria que o hash de IP muda entre redes diferentes (confirma que o IP do visitante chega via `x-real-ip`).
-- [ ] Alertas de orçamento e de disponibilidade configurados.
-- [ ] Backup agendado e **um restore testado**.
+- [ ] Política de Privacidade revisada pela diretoria.
+- [ ] Login + TOTP, convite, publicação, upload, resultado e botão de inscrição testados em produção.
+- [ ] Auditoria mostra hashes de IP diferentes para redes diferentes (o IP do visitante chega à API).
+- [ ] Secrets do GitHub configurados e um backup executado manualmente (*Actions → Backup semanal → Run workflow*).
+- [ ] Uptime check gratuito (ex.: UptimeRobot) no site e em `https://latox-api.vercel.app/api/v1/health`.
 - [ ] Revisão de segurança independente / pentest autorizado.
-
-## 6. Backup e restauração
-
-Backups agendados nativos do Firestore (diários, 14 semanas):
-
-```bash
-gcloud firestore backups schedules create --database="(default)" --recurrence=daily --retention=14w --project PROJECT_ID
-```
-
-Exportação manual (antes de mudanças grandes):
-
-```bash
-gcloud firestore export gs://PROJECT_ID-backups/$(date +%F) --project PROJECT_ID
-```
-
-Storage: ative *Object Versioning* e *Soft delete* (≥ 7 dias) no bucket de mídia. Logs de auditoria: bucket do Cloud Logging com retenção de 5 anos e *retention lock*.
-
-Restauração (testar **trimestralmente** no projeto de homologação):
-
-```bash
-gcloud firestore import gs://PROJECT_ID-backups/AAAA-MM-DD --project latox-hml
-```
-
-Respostas do Google Forms: a planilha fica no Drive da liga (versionamento do próprio Google). Não exporte cópias para fora da conta institucional.
-
-## 7. Monitoramento
-
-- Uptime check (Cloud Monitoring ou UptimeRobot) em `https://SEU-SITE/` e `https://southamerica-east1-PROJECT_ID.cloudfunctions.net/api/api/v1/health`.
-- Alertas por log: falhas repetidas de `auth.login`, qualquer `user.role_change`, `user.invite`, `result.replace`, erros 5xx.
-- Vercel: *Observability/Logs* para o site.
-- Dependabot/Renovate para dependências.
 
 ## 8. Resposta a incidentes
 
-1. **Conter**: suspender administradores suspeitos, revogar sessões, **rotacionar `API_PROXY_SECRET`** (API e Vercel) se houver suspeita de vazamento, reverter o deploy (Vercel: *Instant Rollback*; Functions: redeploy do commit anterior).
-2. **Preservar evidências**: exportar `auditLogs` e logs do período.
-3. **Erradicar e recuperar**: corrigir a causa; restaurar do backup se houver adulteração (comparar com `contentRevisions`).
+1. **Conter**: suspender administradores suspeitos, revogar sessões; se houver suspeita de vazamento, **rotacionar** `API_PROXY_SECRET` (nos dois projetos), `CRON_SECRET` e a chave da conta de serviço (Firebase → Contas de serviço; apague a antiga no Google Cloud IAM). Reverter deploy: Vercel → *Instant Rollback*.
+2. **Preservar evidências**: exportar `auditLogs` (backup manual) e logs do Vercel.
+3. **Recuperar**: restaurar de backup se houver adulteração (comparar com `contentRevisions`).
 4. **Comunicar**: com dados pessoais envolvidos, avaliar comunicação à ANPD e aos titulares (LGPD, art. 48).
 5. **Lições aprendidas**: atualizar este documento.

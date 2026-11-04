@@ -1,7 +1,7 @@
 import "server-only";
 import type { EventItem, NewsItem, Paged, ProjectItem, SelectionProcess, SiteSettings, TeamMember } from "./types";
 
-const BASE = (process.env.API_INTERNAL_URL ?? "http://127.0.0.1:5001/demo-latox/southamerica-east1/api").replace(/\/$/, "");
+const BASE = (process.env.API_INTERNAL_URL ?? "http://localhost:8787").replace(/\/$/, "");
 
 export class ApiNotFound extends Error {}
 

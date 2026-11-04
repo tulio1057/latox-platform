@@ -1,89 +1,60 @@
 "use client";
 
-import {
-  getMultiFactorResolver,
-  multiFactor,
-  sendPasswordResetEmail,
-  signInWithEmailAndPassword,
-  signOut,
-  TotpMultiFactorGenerator,
-  type MultiFactorError,
-  type MultiFactorResolver,
-  type TotpSecret,
-  type User,
-} from "firebase/auth";
+import { sendPasswordResetEmail, signInWithEmailAndPassword, signOut } from "firebase/auth";
 import QRCode from "qrcode";
 import { useState, type FormEvent } from "react";
-import { ApiError } from "@/lib/admin-api";
+import { apiFetch, ApiError } from "@/lib/admin-api";
 import { getClientAuth } from "@/lib/firebase-client";
 
-type Step = "credentials" | "totp" | "enroll" | "reset";
+type Step = "credentials" | "verify" | "enroll" | "recovery-codes" | "reset";
+
+interface Challenge {
+  mfa: "verify" | "enroll";
+  challenge: string;
+  otpauthUrl?: string;
+  secret?: string;
+}
+
+interface MfaResult {
+  csrfToken: string;
+  recoveryCodes?: string[];
+}
 
 /** Generic messages only: never reveal whether an account exists. */
 function friendly(err: unknown): string {
   const code = (err as { code?: string })?.code ?? "";
   if (code === "auth/too-many-requests") return "Muitas tentativas. Aguarde alguns minutos e tente novamente.";
-  if (code === "auth/invalid-verification-code" || code === "auth/invalid-mfa-code") return "Código inválido. Confira o aplicativo autenticador.";
   if (err instanceof ApiError) return err.message;
   return "Não foi possível entrar. Verifique seus dados.";
 }
 
 /**
- * Password + TOTP second factor. On success calls `onToken(idToken)`, which the caller
- * exchanges for a server session (login) or a re-authentication (sensitive operations).
- * Firebase client state is cleared right after — the ID token is never stored.
+ * Two steps:
+ *  1. password, verified by Firebase Auth in the browser → short-lived ID token,
+ *     exchanged at the API for a second-factor challenge (never a session);
+ *  2. TOTP code from an authenticator app (or a one-time recovery code), verified by the API.
+ * Firebase client state is in memory only and cleared right after step 1.
  */
 export function SignInFlow({
+  mode = "login",
   initialEmail = "",
-  lockEmail = false,
-  submitLabel = "Entrar",
-  onToken,
+  onDone,
 }: {
+  mode?: "login" | "reauth";
   initialEmail?: string;
-  lockEmail?: boolean;
-  submitLabel?: string;
-  onToken: (idToken: string) => Promise<void>;
+  onDone: (result: MfaResult) => void | Promise<void>;
 }) {
   const [step, setStep] = useState<Step>("credentials");
   const [email, setEmail] = useState(initialEmail);
   const [password, setPassword] = useState("");
   const [code, setCode] = useState("");
+  const [useRecovery, setUseRecovery] = useState(false);
   const [error, setError] = useState("");
   const [info, setInfo] = useState("");
   const [busy, setBusy] = useState(false);
-  const [resolver, setResolver] = useState<MultiFactorResolver | null>(null);
-  const [enrollUser, setEnrollUser] = useState<User | null>(null);
-  const [secret, setSecret] = useState<TotpSecret | null>(null);
+  const [challenge, setChallenge] = useState<Challenge | null>(null);
   const [qr, setQr] = useState("");
-
-  async function finish(user: User) {
-    const auth = getClientAuth();
-    let enrolling = false;
-    try {
-      const token = await user.getIdToken(true);
-      await onToken(token);
-    } catch (err) {
-      if (err instanceof ApiError && err.code === "MFA_REQUIRED") {
-        enrolling = true;
-        await startEnrollment(user);
-        return;
-      }
-      throw err;
-    } finally {
-      // Keep the Firebase user only while enrolling a second factor.
-      if (!enrolling && auth.currentUser) await signOut(auth).catch(() => undefined);
-    }
-  }
-
-  async function startEnrollment(user: User) {
-    const session = await multiFactor(user).getSession();
-    const s = await TotpMultiFactorGenerator.generateSecret(session);
-    const uri = s.generateQrCodeUrl(user.email ?? email, "LATox Admin");
-    setQr(await QRCode.toDataURL(uri, { margin: 1, width: 220, color: { dark: "#26351B", light: "#FFFFFF" } }));
-    setSecret(s);
-    setEnrollUser(user);
-    setStep("enroll");
-  }
+  const [result, setResult] = useState<MfaResult | null>(null);
 
   async function run(fn: () => Promise<void>) {
     setBusy(true);
@@ -102,50 +73,44 @@ export function SignInFlow({
     e.preventDefault();
     void run(async () => {
       const auth = getClientAuth();
+      let idToken: string;
       try {
         const cred = await signInWithEmailAndPassword(auth, email.trim(), password);
-        await finish(cred.user);
-      } catch (err) {
-        if ((err as { code?: string }).code === "auth/multi-factor-auth-required") {
-          const r = getMultiFactorResolver(auth, err as MultiFactorError);
-          if (!r.hints.some((h) => h.factorId === TotpMultiFactorGenerator.FACTOR_ID)) {
-            throw new Error("unsupported factor");
-          }
-          setResolver(r);
-          setStep("totp");
-          return;
-        }
-        throw err;
+        idToken = await cred.user.getIdToken(true);
       } finally {
         setPassword("");
+        await signOut(auth).catch(() => undefined);
+      }
+      const ch = await apiFetch<Challenge>(mode === "reauth" ? "/auth/reauth" : "/auth/session", { method: "POST", body: { idToken } });
+      setChallenge(ch);
+      if (ch.mfa === "enroll" && ch.otpauthUrl) {
+        setQr(await QRCode.toDataURL(ch.otpauthUrl, { margin: 1, width: 220, color: { dark: "#26351B", light: "#FFFFFF" } }));
+        setStep("enroll");
+      } else {
+        setStep("verify");
       }
     });
   };
 
-  const onTotp = (e: FormEvent) => {
+  const onCode = (e: FormEvent) => {
     e.preventDefault();
     void run(async () => {
-      if (!resolver) return;
-      const hint = resolver.hints.find((h) => h.factorId === TotpMultiFactorGenerator.FACTOR_ID)!;
-      const assertion = TotpMultiFactorGenerator.assertionForSignIn(hint.uid, code.trim());
-      const cred = await resolver.resolveSignIn(assertion);
-      setCode("");
-      await finish(cred.user);
-    });
-  };
-
-  const onEnroll = (e: FormEvent) => {
-    e.preventDefault();
-    void run(async () => {
-      if (!enrollUser || !secret) return;
-      const assertion = TotpMultiFactorGenerator.assertionForEnrollment(secret, code.trim());
-      await multiFactor(enrollUser).enroll(assertion, "Aplicativo autenticador");
-      await signOut(getClientAuth());
-      setSecret(null);
-      setQr("");
-      setCode("");
-      setStep("credentials");
-      setInfo("Autenticação em dois fatores ativada. Entre novamente usando sua senha e o código do aplicativo.");
+      if (!challenge) return;
+      const body = useRecovery ? { challenge: challenge.challenge, recoveryCode: code.trim() } : { challenge: challenge.challenge, code: code.trim() };
+      try {
+        const r = await apiFetch<MfaResult>("/auth/mfa", { method: "POST", body });
+        setCode("");
+        if (r.recoveryCodes?.length) {
+          setResult(r);
+          setStep("recovery-codes");
+          return;
+        }
+        await onDone(r);
+      } catch (err) {
+        // An expired/locked challenge cannot be retried: start over.
+        if (err instanceof ApiError && err.code === "MFA_INVALID") setCode("");
+        throw err;
+      }
     });
   };
 
@@ -162,6 +127,14 @@ export function SignInFlow({
     });
   };
 
+  const restart = () => {
+    setChallenge(null);
+    setCode("");
+    setQr("");
+    setUseRecovery(false);
+    setStep("credentials");
+  };
+
   return (
     <div className="stack">
       {error && (
@@ -176,19 +149,19 @@ export function SignInFlow({
       )}
 
       {step === "credentials" && (
-        <form onSubmit={onCredentials} className="form-grid" noValidate={false}>
+        <form onSubmit={onCredentials} className="form-grid">
           <div className="field">
             <label htmlFor="email">E-mail</label>
-            <input id="email" className="input" type="email" autoComplete="username" required value={email} readOnly={lockEmail} onChange={(e) => setEmail(e.target.value)} />
+            <input id="email" className="input" type="email" autoComplete="username" required value={email} readOnly={mode === "reauth"} onChange={(e) => setEmail(e.target.value)} />
           </div>
           <div className="field">
             <label htmlFor="password">Senha</label>
             <input id="password" className="input" type="password" autoComplete="current-password" required minLength={8} value={password} onChange={(e) => setPassword(e.target.value)} />
           </div>
           <button className="btn btn-primary btn-lg" type="submit" disabled={busy}>
-            {busy ? "Verificando…" : submitLabel}
+            {busy ? "Verificando…" : mode === "reauth" ? "Continuar" : "Entrar"}
           </button>
-          {!lockEmail && (
+          {mode === "login" && (
             <button type="button" className="btn btn-ghost btn-sm" onClick={() => setStep("reset")}>
               Esqueci minha senha
             </button>
@@ -196,40 +169,61 @@ export function SignInFlow({
         </form>
       )}
 
-      {step === "totp" && (
-        <form onSubmit={onTotp} className="form-grid">
-          <p className="muted mt-0">Digite o código de 6 dígitos do seu aplicativo autenticador.</p>
+      {(step === "verify" || step === "enroll") && (
+        <form onSubmit={onCode} className="form-grid">
+          {step === "enroll" ? (
+            <>
+              <div className="alert alert-info">
+                A autenticação em dois fatores é obrigatória. Escaneie o QR code com um aplicativo autenticador (Google Authenticator,
+                Microsoft Authenticator, 1Password…) e digite o código de 6 dígitos gerado.
+              </div>
+              {qr && <img src={qr} alt="QR code para configurar o aplicativo autenticador" width={220} height={220} style={{ margin: "0 auto", borderRadius: 12 }} />}
+              {challenge?.secret && (
+                <details>
+                  <summary>Não consegue escanear? Use a chave manual</summary>
+                  <code style={{ wordBreak: "break-all" }}>{challenge.secret}</code>
+                </details>
+              )}
+            </>
+          ) : (
+            <p className="muted mt-0">{useRecovery ? "Digite um dos seus códigos de recuperação." : "Digite o código de 6 dígitos do seu aplicativo autenticador."}</p>
+          )}
           <div className="field">
-            <label htmlFor="totp">Código de verificação</label>
-            <input id="totp" className="input otp" inputMode="numeric" autoComplete="one-time-code" pattern="\d{6}" maxLength={6} required autoFocus value={code} onChange={(e) => setCode(e.target.value.replace(/\D/g, ""))} />
+            <label htmlFor="otp">{useRecovery ? "Código de recuperação" : "Código de verificação"}</label>
+            {useRecovery ? (
+              <input id="otp" className="input" autoComplete="off" required maxLength={20} value={code} onChange={(e) => setCode(e.target.value.toUpperCase())} />
+            ) : (
+              <input id="otp" className="input otp" inputMode="numeric" autoComplete="one-time-code" pattern="\d{6}" maxLength={6} required autoFocus value={code} onChange={(e) => setCode(e.target.value.replace(/\D/g, ""))} />
+            )}
           </div>
-          <button className="btn btn-primary btn-lg" type="submit" disabled={busy || code.length !== 6}>
-            {busy ? "Verificando…" : "Confirmar"}
+          <button className="btn btn-primary btn-lg" type="submit" disabled={busy || (!useRecovery && code.length !== 6)}>
+            {busy ? "Verificando…" : step === "enroll" ? "Ativar e entrar" : "Confirmar"}
+          </button>
+          {step === "verify" && (
+            <button type="button" className="btn btn-ghost btn-sm" onClick={() => (setUseRecovery((v) => !v), setCode(""))}>
+              {useRecovery ? "Usar o aplicativo autenticador" : "Perdi o acesso ao autenticador"}
+            </button>
+          )}
+          <button type="button" className="btn btn-ghost btn-sm" onClick={restart}>
+            Recomeçar
           </button>
         </form>
       )}
 
-      {step === "enroll" && (
-        <form onSubmit={onEnroll} className="form-grid">
-          <div className="alert alert-info">
-            A autenticação em dois fatores é obrigatória. Escaneie o QR code com um aplicativo autenticador (Google Authenticator,
-            Microsoft Authenticator, 1Password…) e digite o código gerado.
+      {step === "recovery-codes" && result && (
+        <div className="form-grid">
+          <div className="alert alert-warn">
+            <strong>Guarde estes códigos de recuperação agora.</strong> Cada um funciona uma única vez, caso você perca o celular. Eles não
+            serão mostrados novamente.
           </div>
-          {qr && <img src={qr} alt="QR code para configurar o aplicativo autenticador" width={220} height={220} style={{ margin: "0 auto", borderRadius: 12 }} />}
-          {secret && (
-            <details>
-              <summary>Não consegue escanear? Use a chave manual</summary>
-              <code style={{ wordBreak: "break-all" }}>{secret.secretKey}</code>
-            </details>
-          )}
-          <div className="field">
-            <label htmlFor="enroll-code">Código de verificação</label>
-            <input id="enroll-code" className="input otp" inputMode="numeric" autoComplete="one-time-code" pattern="\d{6}" maxLength={6} required value={code} onChange={(e) => setCode(e.target.value.replace(/\D/g, ""))} />
-          </div>
-          <button className="btn btn-primary btn-lg" type="submit" disabled={busy || code.length !== 6}>
-            Ativar autenticação em dois fatores
+          <pre style={{ background: "var(--beige-200)", padding: 16, borderRadius: 8, fontSize: "1.05rem", textAlign: "center" }}>{result.recoveryCodes!.join("\n")}</pre>
+          <button className="btn btn-outline btn-sm" type="button" onClick={() => void navigator.clipboard.writeText(result.recoveryCodes!.join("\n"))}>
+            Copiar códigos
           </button>
-        </form>
+          <button className="btn btn-primary btn-lg" type="button" onClick={() => void onDone(result)}>
+            Já guardei, continuar
+          </button>
+        </div>
       )}
 
       {step === "reset" && (

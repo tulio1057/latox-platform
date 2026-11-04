@@ -1,0 +1,48 @@
+name: Backup semanal (Firestore)
+
+# Requires repository secrets:
+#   FIREBASE_SERVICE_ACCOUNT  – service-account JSON of the production project
+#   BACKUP_PASSPHRASE         – long random passphrase (store it in the league's password manager)
+# The backup is encrypted with AES-256 (OpenSSL, PBKDF2) before leaving the runner and
+# kept as a workflow artifact for 30 days. Decrypt with:
+#   openssl enc -d -aes-256-cbc -pbkdf2 -iter 600000 -in backup.json.enc -out backup.json
+
+on:
+  schedule:
+    - cron: "0 7 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: functions
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: functions/package-lock.json
+      - run: npm ci
+      - run: npm run build
+      - name: Export Firestore
+        env:
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+        run: npm run backup -- backup.json
+      - name: Encrypt
+        env:
+          BACKUP_PASSPHRASE: ${{ secrets.BACKUP_PASSPHRASE }}
+        run: |
+          test -n "$BACKUP_PASSPHRASE"
+          openssl enc -aes-256-cbc -pbkdf2 -iter 600000 -salt -in backup.json -out backup.json.enc -pass env:BACKUP_PASSPHRASE
+          shred -u backup.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: latox-backup-${{ github.run_id }}
+          path: functions/backup.json.enc
+          retention-days: 30

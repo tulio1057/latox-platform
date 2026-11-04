@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense } from "react";
 import { SignInFlow } from "@/components/admin/SignInFlow";
-import { apiFetch, safeAdminNext, setCsrfToken } from "@/lib/admin-api";
+import { safeAdminNext, setCsrfToken } from "@/lib/admin-api";
 
 function LoginInner() {
   const router = useRouter();
@@ -12,8 +12,7 @@ function LoginInner() {
   const next = safeAdminNext(params.get("next"));
   return (
     <SignInFlow
-      onToken={async (idToken) => {
-        const r = await apiFetch<{ csrfToken: string }>("/auth/session", { method: "POST", body: { idToken } });
+      onDone={(r) => {
         setCsrfToken(r.csrfToken);
         router.replace(next);
       }}

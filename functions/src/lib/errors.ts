@@ -1,5 +1,5 @@
 import type { ErrorRequestHandler, RequestHandler } from "express";
-import { logger } from "firebase-functions";
+import { logger } from "./log";
 import { ZodError } from "zod";
 import { config } from "../config";
 

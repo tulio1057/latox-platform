@@ -100,6 +100,17 @@ describe("administrator management", () => {
     expect(JSON.stringify(audit.docs[0]!.data())).not.toMatch(/__session|csrf/i);
   });
 
+  it("MFA reset forces re-enrolment, revokes sessions and cannot target oneself", async () => {
+    const sa = await login("sa-mfa", "SUPER_ADMIN");
+    const target = await login("tg-mfa", "EDITOR");
+    expect((await sa.post(`/api/v1/admin/users/${sa.uid}/reset-mfa`)).status).toBe(403);
+    expect((await sa.post(`/api/v1/admin/users/${target.uid}/reset-mfa`)).status).toBe(200);
+    expect((await target.get("/api/v1/admin/dashboard")).status).toBe(401);
+    const doc = (await db.collection(COLLECTIONS.adminUsers).doc(target.uid).get()).data()!;
+    expect(doc.totpSecretEnc).toBeUndefined();
+    expect(doc.mfaEnrolled).toBe(false);
+  });
+
   it("suspension immediately blocks access", async () => {
     const sa = await login("sa3", "SUPER_ADMIN");
     const target = await login("tg2", "EDITOR");

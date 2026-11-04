@@ -170,11 +170,9 @@ export function AdminProvider({ children }: { children: ReactNode }) {
             <h2 id="reauth-title">Confirme sua identidade</h2>
             <p className="muted">Esta é uma operação sensível. Informe sua senha e o código do autenticador.</p>
             <SignInFlow
+              mode="reauth"
               initialEmail={me.email ?? ""}
-              lockEmail
-              submitLabel="Confirmar identidade"
-              onToken={async (idToken) => {
-                const r = await apiFetch<{ csrfToken: string }>("/auth/reauth", { method: "POST", body: { idToken } });
+              onDone={(r) => {
                 setCsrfToken(r.csrfToken);
                 reauth.resolve(true);
                 setReauth(null);

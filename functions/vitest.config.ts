@@ -10,7 +10,6 @@ export default defineConfig({
     env: {
       NODE_ENV: "test",
       GCLOUD_PROJECT: "demo-latox",
-      STORAGE_BUCKET: "demo-latox.appspot.com",
       ALLOWED_ORIGINS: "http://localhost:3000",
     },
   },

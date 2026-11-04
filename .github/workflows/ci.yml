@@ -31,7 +31,7 @@ jobs:
       - run: npm audit --omit=dev --audit-level=high
       - name: Integration tests (Firebase emulators)
         working-directory: .
-        run: npx firebase-tools@15 emulators:exec --only auth,firestore,storage --project demo-latox "npm --prefix functions test"
+        run: npx firebase-tools@15 emulators:exec --only auth,firestore --project demo-latox "npm --prefix functions test"
       - run: npm run build
 
   web:

@@ -1,6 +1,8 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import request from "supertest";
-import { app, clearFirestore, login, mockToken, ORIGIN, randomIp, seedAdmin } from "./helpers";
+import { app, clearFirestore, login, mfaStep, mockToken, ORIGIN, passwordStep, randomIp, seedAdmin } from "./helpers";
+import { currentCode } from "../src/auth/totp";
+import { COLLECTIONS, db } from "../src/lib/firebase";
 
 const session = (ip = randomIp()) =>
   request(app).post("/api/v1/auth/session").set("Origin", ORIGIN).set("X-Forwarded-For", ip).send({ idToken: "x".repeat(40) });
@@ -18,13 +20,70 @@ describe("authentication & sessions", () => {
     expect(res.status).toBe(401);
   });
 
-  it("requires a second factor (MFA) to create a session", async () => {
+  it("never creates a session from the password alone (MFA is mandatory)", async () => {
     await seedAdmin("u-mfa", "SUPER_ADMIN");
-    mockToken("u-mfa", { mfa: false });
+    mockToken("u-mfa");
     const res = await session();
-    expect(res.status).toBe(401);
-    expect(res.body.error.code).toBe("MFA_REQUIRED");
+    expect(res.status).toBe(200);
+    expect(res.body.mfa).toBe("enroll");
     expect(res.headers["set-cookie"]).toBeUndefined();
+    expect((await request(app).get("/api/v1/admin/dashboard")).status).toBe(401);
+  });
+
+  it("stores the TOTP secret encrypted and issues one-time recovery codes", async () => {
+    const agent = await login("u-enc", "EDITOR");
+    expect(agent.recoveryCodes).toHaveLength(8);
+    const doc = (await db.collection(COLLECTIONS.adminUsers).doc("u-enc").get()).data()!;
+    expect(String(doc.totpSecretEnc)).toMatch(/^v1:/);
+    expect(JSON.stringify(doc)).not.toContain(agent.secret);
+    expect(JSON.stringify(doc)).not.toContain(agent.recoveryCodes[0]);
+  });
+
+  it("rejects wrong codes and locks the challenge after 5 attempts", async () => {
+    await login("u-brute", "EDITOR");
+    mockToken("u-brute");
+    const ip = randomIp();
+    const step1 = await passwordStep(ip);
+    expect(step1.body.mfa).toBe("verify");
+    const statuses: number[] = [];
+    for (let i = 0; i < 6; i++) statuses.push((await mfaStep(ip, { challenge: step1.body.challenge, code: "000000" })).status);
+    expect(statuses.every((s) => s === 401)).toBe(true);
+    expect((await db.collection(COLLECTIONS.mfaChallenges).get()).size).toBe(0);
+  });
+
+  it("rejects replayed TOTP codes", async () => {
+    const agent = await login("u-replay", "EDITOR");
+    mockToken("u-replay");
+    const ip = randomIp();
+    // The enrolment already consumed the current time step.
+    const a = await passwordStep(ip);
+    expect((await mfaStep(ip, { challenge: a.body.challenge, code: currentCode(agent.secret) })).status).toBe(401);
+    const b = await passwordStep(ip);
+    expect((await mfaStep(ip, { challenge: b.body.challenge, code: currentCode(agent.secret, 1) })).status).toBe(201);
+  });
+
+  it("accepts a recovery code exactly once", async () => {
+    const agent = await login("u-rc", "EDITOR");
+    mockToken("u-rc");
+    const ip = randomIp();
+    const a = await passwordStep(ip);
+    expect((await mfaStep(ip, { challenge: a.body.challenge, recoveryCode: agent.recoveryCodes[0] })).status).toBe(201);
+    const b = await passwordStep(ip);
+    expect((await mfaStep(ip, { challenge: b.body.challenge, recoveryCode: agent.recoveryCodes[0] })).status).toBe(401);
+  });
+
+  it("re-authentication must be completed by the session that requested it", async () => {
+    const owner = await login("u-reauth", "SUPER_ADMIN");
+    const other = await login("u-other", "SUPER_ADMIN");
+    mockToken("u-reauth");
+    const ch = await owner.post("/api/v1/auth/reauth", { idToken: "x".repeat(40) });
+    expect(ch.status).toBe(200);
+    const stolen = await mfaStep(other.ip, { challenge: ch.body.challenge, code: currentCode(owner.secret, 1) }, other.cookie);
+    expect(stolen.status).toBe(401);
+    const ch2 = await owner.post("/api/v1/auth/reauth", { idToken: "x".repeat(40) });
+    const ok = await mfaStep(owner.ip, { challenge: ch2.body.challenge, code: currentCode(owner.secret, 1) }, owner.cookie);
+    expect(ok.status).toBe(200);
+    expect(ok.body.csrfToken).toBeTruthy();
   });
 
   it("rejects stale authentications (auth_time too old)", async () => {
@@ -61,7 +120,8 @@ describe("authentication & sessions", () => {
   it("issues an HttpOnly, SameSite=Strict session cookie and never returns the token in JSON", async () => {
     await seedAdmin("u-ok", "EDITOR");
     mockToken("u-ok");
-    const res = await session();
+    const step1 = await session();
+    const res = await mfaStep(randomIp(), { challenge: step1.body.challenge, code: currentCode(step1.body.secret) });
     expect(res.status).toBe(201);
     const cookie = String(res.headers["set-cookie"]?.[0]);
     expect(cookie).toMatch(/^__session=/);

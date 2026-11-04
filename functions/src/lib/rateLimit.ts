@@ -5,7 +5,7 @@ import { hashIp, sha256 } from "./crypto";
 import { HttpError } from "./errors";
 
 /**
- * Fast per-instance limiter (cheap first line of defence). Cloud Functions may run many
+ * Fast per-instance limiter (cheap first line of defence). Serverless platforms may run many
  * instances, so sensitive endpoints additionally use the shared Firestore limiter below.
  */
 export function memoryRateLimit(opts: { windowMs: number; max: number; key?: (req: Request) => string }): RequestHandler {

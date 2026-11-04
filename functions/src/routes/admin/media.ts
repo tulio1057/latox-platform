@@ -1,6 +1,6 @@
 import { Router, type Response } from "express";
 import { Timestamp, type DocumentData } from "firebase-admin/firestore";
-import { logger } from "firebase-functions";
+import { logger } from "../../lib/log";
 import { z } from "zod";
 import { config } from "../../config";
 import { requirePermission } from "../../auth/middleware";
@@ -8,7 +8,8 @@ import { audit } from "../../lib/audit";
 import { paginate } from "../../lib/content";
 import { badRequest, notFound } from "../../lib/errors";
 import { ID_RE, text } from "../../lib/fields";
-import { bucket, COLLECTIONS, db } from "../../lib/firebase";
+import { deleteBlob, getBlob, putBlob, type BlobRef } from "../../lib/blobStore";
+import { COLLECTIONS, db } from "../../lib/firebase";
 import { displayName, parseMultipart, validateAndProcess, type ProcessedFile } from "../../lib/media";
 import { mediaUrl, serialize } from "../../lib/serialize";
 
@@ -33,39 +34,30 @@ function toDto(id: string, d: DocumentData) {
   });
 }
 
-async function store(id: string, file: ProcessedFile) {
-  // Server-generated object name: the client filename never reaches the storage path.
-  const path = `media/${id}-${Date.now().toString(36)}.${file.ext}`;
-  await bucket().file(path).save(file.buffer, {
-    resumable: false,
-    contentType: file.mimeType,
-    metadata: { cacheControl: "private, max-age=0" },
-  });
-  return path;
+/** Server-generated blob key: the client filename never reaches storage. */
+async function store(id: string, file: ProcessedFile): Promise<BlobRef> {
+  return putBlob(`${id}-${Date.now().toString(36)}`, file.buffer);
 }
 
-/** Streams a stored object with hardened headers. Uploaded files are never executed. */
+const blobRef = (d: DocumentData): BlobRef => ({ blobKey: String(d.blobKey), chunkCount: Number(d.chunkCount ?? 0) });
+
+/** Sends a stored file with hardened headers. Uploaded files are never executed. */
 export async function streamMedia(res: Response, d: DocumentData, cacheControl: string) {
-  const file = bucket().file(String(d.storagePath));
+  const data = await getBlob(blobRef(d));
+  if (!data) {
+    logger.error("media blob missing", { blobKey: String(d.blobKey) });
+    res.status(404).end();
+    return;
+  }
   res.setHeader("Content-Type", String(d.mimeType));
+  res.setHeader("Content-Length", String(data.length));
   res.setHeader("X-Content-Type-Options", "nosniff");
   res.setHeader("Cache-Control", cacheControl);
   res.setHeader("Content-Security-Policy", "default-src 'none'; sandbox");
   res.setHeader("Cross-Origin-Resource-Policy", "same-origin");
-  const safeName = String(d.name ?? "arquivo").replace(/[^\w.\- ]/g, "_");
+  const safeName = String(d.name ?? "arquivo").replace(/[^\w. -]/g, "_");
   res.setHeader("Content-Disposition", `inline; filename="${safeName}"`);
-  await new Promise<void>((resolve) => {
-    file
-      .createReadStream()
-      .on("error", (err) => {
-        logger.error("media stream failed", { message: err.message });
-        if (!res.headersSent) res.status(404).end();
-        else res.end();
-        resolve();
-      })
-      .on("end", () => resolve())
-      .pipe(res);
-  });
+  res.end(data);
 }
 
 const FOLDERS = ["geral", "imagens", "editais", "documentos", "eventos"] as const;
@@ -99,7 +91,7 @@ export function mediaRouter(): Router {
     const file = await validateAndProcess(upload.buffer, upload.filename, upload.mimeType);
     const folder = (FOLDERS as readonly string[]).includes(upload.fields.folder ?? "") ? upload.fields.folder : "geral";
     const ref = media().doc();
-    const storagePath = await store(ref.id, file);
+    const blob = await store(ref.id, file);
     const now = Timestamp.now();
     const data = {
       name: displayName(upload.filename),
@@ -108,7 +100,8 @@ export function mediaRouter(): Router {
       size: file.buffer.length,
       width: file.width ?? null,
       height: file.height ?? null,
-      storagePath,
+      blobKey: blob.blobKey,
+      chunkCount: blob.chunkCount,
       isPublic: upload.fields.isPublic !== "false",
       folder,
       createdAt: now,
@@ -141,23 +134,24 @@ export function mediaRouter(): Router {
     const upload = await parseMultipart(req);
     const file = await validateAndProcess(upload.buffer, upload.filename, upload.mimeType);
     if (file.kind !== old.kind) throw badRequest("O novo arquivo deve ser do mesmo tipo do original.");
-    const storagePath = await store(snap.id, file);
+    const blob = await store(snap.id, file);
     await snap.ref.update({
-      storagePath,
+      blobKey: blob.blobKey,
+      chunkCount: blob.chunkCount,
       mimeType: file.mimeType,
       size: file.buffer.length,
       width: file.width ?? null,
       height: file.height ?? null,
       updatedAt: Timestamp.now(),
     });
-    await bucket().file(String(old.storagePath)).delete({ ignoreNotFound: true });
+    await deleteBlob(blobRef(old));
     await audit(req, { action: "media.replace", resourceType: RT, resourceId: snap.id, result: "success" });
     res.json({ ok: true });
   });
 
   r.delete("/:id", requirePermission("media:delete"), async (req, res) => {
     const snap = await load(req.params.id as string);
-    await bucket().file(String(snap.data()!.storagePath)).delete({ ignoreNotFound: true });
+    await deleteBlob(blobRef(snap.data()!));
     await snap.ref.delete();
     await audit(req, { action: "media.delete", resourceType: RT, resourceId: snap.id, result: "success" });
     res.status(204).end();

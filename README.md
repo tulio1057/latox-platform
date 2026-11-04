@@ -5,11 +5,11 @@ Site oficial e painel administrativo da **Liga Acadêmica de Toxicologia (LATox)
 | Parte | Tecnologia | Pasta |
 |---|---|---|
 | Site público + painel `/admin` | Next.js 15 (App Router), React 19, TypeScript | [`web/`](web/) |
-| API REST `/api/v1` | Express 5 + TypeScript em Cloud Functions (2ª geração) | [`functions/`](functions/) |
+| API REST `/api/v1` | Express 5 + TypeScript em Vercel Functions (projeto separado) | [`functions/`](functions/) |
 | Banco de dados | Cloud Firestore (acesso só pelo servidor) | regras em [`firestore.rules`](firestore.rules) |
-| Arquivos | Cloud Storage (privado, servido pela API) | regras em [`storage.rules`](storage.rules) |
-| Autenticação | Firebase Auth / Identity Platform — senha + **TOTP obrigatório** | |
-| Hospedagem | **Vercel** (site, região São Paulo) com proxy `/api/**` → **Firebase Cloud Functions** | [`web/middleware.ts`](web/middleware.ts), [`firebase.json`](firebase.json) |
+| Arquivos | No Firestore, em pedaços de 900 KB, servidos só pela API (o plano gratuito não tem Storage) | `functions/src/lib/blobStore.ts` |
+| Autenticação | Firebase Auth (senha) + **TOTP obrigatório verificado pela API** | `functions/src/auth/` |
+| Hospedagem | **Vercel** (site + API, região São Paulo), Firebase no plano **Spark** — custo zero | [`web/middleware.ts`](web/middleware.ts), [`firebase.json`](firebase.json) |
 | Inscrições | Google Forms criado por Apps Script, com nº de inscrição | [`integrations/google-forms/`](integrations/google-forms/) |
 
 Documentação:
@@ -37,10 +37,10 @@ npm --prefix web install
 cp functions/.env.example functions/.env.local && cp web/.env.example web/.env.local
 ```
 
-Terminal 1 — emuladores (Auth, Firestore, Storage, Functions):
+Terminal 1 — emuladores (Auth, Firestore):
 
 ```bash
-npm --prefix functions run build && firebase emulators:start --only auth,firestore,storage,functions --project demo-latox
+firebase emulators:start --only auth,firestore --project demo-latox
 ```
 
 Terminal 2 — dados de desenvolvimento (itens marcados `[DEMO]` + admin local; credenciais gravadas em `functions/.dev-admin.local.txt`, ignorado pelo Git):
@@ -49,13 +49,19 @@ Terminal 2 — dados de desenvolvimento (itens marcados `[DEMO]` + admin local; 
 cd functions && FIRESTORE_EMULATOR_HOST=127.0.0.1:8080 FIREBASE_AUTH_EMULATOR_HOST=127.0.0.1:9099 GCLOUD_PROJECT=demo-latox npm run seed:dev
 ```
 
-Terminal 3 — site em http://localhost:3000 (painel em `/admin`):
+Terminal 3 — API em http://localhost:8787:
+
+```bash
+npm --prefix functions run dev
+```
+
+Terminal 4 — site em http://localhost:3000 (painel em `/admin`):
 
 ```bash
 npm --prefix web run dev
 ```
 
-> O emulador de Auth não emite segundo fator TOTP; por isso `DEV_ALLOW_NO_MFA=true` existe **apenas** dentro do emulador de Functions e é ignorado em qualquer outro ambiente.
+> No primeiro login local, escaneie o QR code com qualquer app autenticador: o TOTP é verificado pela própria API, inclusive com os emuladores.
 
 ## Testes
 
@@ -67,7 +73,7 @@ npm --prefix functions run test:emu
 npm --prefix web test
 ```
 
-API: 46 testes de integração contra os emuladores (autenticação/MFA, sessões, CSRF, RBAC, IDOR, mass assignment, XSS, injeção, uploads maliciosos, resultados, auditoria, rate limit, proteção do proxy). Web: testes de componentes do redirecionamento de inscrição, links seguros e open redirect.
+API: 54 testes de integração contra os emuladores (autenticação/MFA, sessões, CSRF, RBAC, IDOR, mass assignment, XSS, injeção, uploads maliciosos, resultados, auditoria, rate limit, proteção do proxy, MFA: reuso de código, força bruta, recuperação, redefinição). Web: testes de componentes do redirecionamento de inscrição, links seguros e open redirect.
 
 ## Estado do projeto
 

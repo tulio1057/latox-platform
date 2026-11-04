@@ -35,6 +35,33 @@ describe("website proxy front door (API_PROXY_SECRET)", () => {
     expect((await proxied("198.51.100.9")).status).not.toBe(429);
   });
 
+  it("uses the visitor IP forwarded by the website (x-latox-client-ip)", async () => {
+    const proxied = (ip: string) =>
+      request(app)
+        .post("/api/v1/auth/session")
+        .set("x-latox-proxy", SECRET)
+        .set("x-latox-client-ip", ip)
+        .set("x-real-ip", "10.0.0.1") // the website's own egress IP
+        .set("Origin", "http://localhost:3000")
+        .send({ idToken: "x".repeat(40) });
+    const statuses: number[] = [];
+    for (let i = 0; i < 24; i++) statuses.push((await proxied("203.0.113.50")).status);
+    expect(statuses).toContain(429);
+    expect((await proxied("203.0.113.51")).status).not.toBe(429);
+  });
+
+  it("protects the cron cleanup endpoint with its own secret", async () => {
+    config.cronSecret = "c".repeat(40);
+    try {
+      expect((await request(app).get("/api/v1/internal/cleanup")).status).toBe(401);
+      expect((await request(app).get("/api/v1/internal/cleanup").set("Authorization", "Bearer wrong")).status).toBe(401);
+      const ok = await request(app).get("/api/v1/internal/cleanup").set("Authorization", `Bearer ${"c".repeat(40)}`);
+      expect(ok.status).toBe(200);
+    } finally {
+      config.cronSecret = "";
+    }
+  });
+
   it("lets authenticated SSR reads skip per-IP limits", async () => {
     const statuses: number[] = [];
     for (let i = 0; i < 320; i++) {

@@ -1,5 +1,5 @@
 import { FieldValue } from "firebase-admin/firestore";
-import { logger } from "firebase-functions";
+import { logger } from "./log";
 import type { Request } from "express";
 import { COLLECTIONS, db } from "./firebase";
 import { hashIp } from "./crypto";
@@ -21,7 +21,7 @@ const FORBIDDEN_META = /pass|token|cookie|secret|session|csrf|authorization/i;
 
 /**
  * Append-only audit log. Written only by the server (Firestore rules deny all client
- * access, no API route updates or deletes entries) and mirrored to Cloud Logging,
+ * access, no API route updates or deletes entries) and mirrored to the platform logs (Vercel),
  * which is retained independently of Firestore.
  */
 export async function audit(req: Request, entry: AuditEntry): Promise<void> {

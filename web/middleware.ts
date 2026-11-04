@@ -13,12 +13,19 @@ export function middleware(req: NextRequest) {
   }
   const url = new URL(`${target.replace(/\/$/, "")}${req.nextUrl.pathname}${req.nextUrl.search}`);
   const headers = new Headers(req.headers);
-  // Never let a visitor claim to be the proxy or the SSR renderer.
+  // Never let a visitor claim to be the proxy, the SSR renderer or set their own IP.
   headers.delete("x-latox-proxy");
   headers.delete("x-latox-ssr");
-  // On Vercel, x-real-ip is overwritten by the platform with the visitor's IP; elsewhere
-  // (local dev) a client could forge it, so drop it.
-  if (process.env.VERCEL !== "1") headers.delete("x-real-ip");
+  headers.delete("x-latox-client-ip");
+  // On Vercel, x-real-ip is overwritten by the platform with the visitor's IP. The API is
+  // also behind Vercel (which would replace x-real-ip with this proxy's IP), so the
+  // visitor IP travels in our own header, trusted only together with the proxy secret.
+  if (process.env.VERCEL === "1") {
+    const ip = req.headers.get("x-real-ip");
+    if (ip) headers.set("x-latox-client-ip", ip);
+  } else {
+    headers.delete("x-real-ip");
+  }
   const secret = process.env.API_PROXY_SECRET;
   if (secret) headers.set("x-latox-proxy", secret);
   return NextResponse.rewrite(url, { request: { headers } });

@@ -1,5 +1,5 @@
 import { Router, type Request } from "express";
-import { Timestamp } from "firebase-admin/firestore";
+import { FieldValue, Timestamp } from "firebase-admin/firestore";
 import { z } from "zod";
 import { requirePermission, requireRecentReauth } from "../../auth/middleware";
 import { ROLES } from "../../auth/permissions";
@@ -128,6 +128,27 @@ export function usersRouter(): Router {
     await snap.ref.update({ status: "active", updatedAt: Timestamp.now(), updatedBy: req.admin!.uid });
     await setAuthDisabled(snap.id, false);
     await audit(req, { action: "user.reactivate", resourceType: RT, resourceId: snap.id, result: "success" });
+    res.json({ ok: true });
+  });
+
+  /**
+   * Lost authenticator: removes the second factor so the person enrols a new one at the
+   * next login. Requires re-authentication, cannot target oneself, revokes all sessions.
+   */
+  r.post("/:uid/reset-mfa", requireRecentReauth, async (req, res) => {
+    notSelf(req);
+    const snap = await load(req.params.uid as string);
+    await snap.ref.update({
+      totpSecretEnc: FieldValue.delete(),
+      totpLastStep: FieldValue.delete(),
+      recoveryCodeHashes: FieldValue.delete(),
+      mfaEnrolled: false,
+      updatedAt: Timestamp.now(),
+      updatedBy: req.admin!.uid,
+    });
+    await revokeFirebaseTokens(snap.id);
+    const revoked = await revokeAllSessions(snap.id);
+    await audit(req, { action: "user.mfa_reset", resourceType: RT, resourceId: snap.id, result: "success", meta: { revokedSessions: revoked } });
     res.json({ ok: true });
   });
 

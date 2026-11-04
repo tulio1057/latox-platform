@@ -6,6 +6,7 @@ import { errorHandler, HttpError, notFoundHandler } from "./lib/errors";
 import { trustedProxy } from "./lib/proxy";
 import { memoryRateLimit } from "./lib/rateLimit";
 import { authRouter } from "./routes/auth";
+import { internalRouter } from "./routes/internal";
 import { contentRouter } from "./routes/admin/content";
 import { mediaRouter } from "./routes/admin/media";
 import { auditRouter, dashboardRouter, settingsRouter } from "./routes/admin/misc";
@@ -80,6 +81,7 @@ export function createApp() {
   });
   v1.use("/public", publicRouter());
   v1.use("/auth", authRouter());
+  v1.use("/internal", internalRouter());
 
   const admin = Router();
   admin.use(requireTrustedOrigin, requireSession, requireCsrf);
