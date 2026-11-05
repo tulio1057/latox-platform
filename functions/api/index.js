@@ -1,5 +1,6 @@
-// Vercel Function entry: the whole Express API (compiled to lib/ by `npm run build`).
-// vercel.json rewrites every path here; Express sees the original URL (/api/v1/...).
-const { createApp } = require("../lib/app");
+// Vercel Function entry. The Express API is bundled by `npm run build` into dist/api.cjs
+// (esbuild converts ESM-only dependencies to CommonJS). vercel.json rewrites every path
+// here; Express still sees the original URL (/api/v1/...).
+const mod = require("../dist/api.cjs");
 
-module.exports = createApp();
+module.exports = mod.default || mod;

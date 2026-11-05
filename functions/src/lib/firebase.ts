@@ -12,8 +12,16 @@ import { getFirestore } from "firebase-admin/firestore";
 function serviceAccountFromEnv(): { project_id?: string } | undefined {
   const raw = process.env.FIREBASE_SERVICE_ACCOUNT;
   if (!raw) return undefined;
-  const json = raw.trim().startsWith("{") ? raw : Buffer.from(raw, "base64").toString("utf8");
-  return JSON.parse(json);
+  try {
+    const json = raw.trim().startsWith("{") ? raw : Buffer.from(raw, "base64").toString("utf8");
+    const parsed = JSON.parse(json) as { project_id?: string; private_key?: string; client_email?: string };
+    if (!parsed.project_id || !parsed.private_key || !parsed.client_email) throw new Error("campos ausentes");
+    return parsed;
+  } catch {
+    // The original JSON.parse error can quote part of the input, which is a secret:
+    // deliberately not attached as `cause` nor logged.
+    throw new Error('FIREBASE_SERVICE_ACCOUNT inválida. Cole o conteúdo COMPLETO do arquivo .json da conta de serviço, começando por "{".');
+  }
 }
 
 function init(): App {

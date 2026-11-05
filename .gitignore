@@ -10,3 +10,4 @@ ui-debug.log*
 *.local.txt
 # Original logo file as received (a copy lives in web/public/brand)
 WhatsApp Image *.jpeg
+.vercel
