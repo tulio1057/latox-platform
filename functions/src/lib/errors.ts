@@ -25,6 +25,8 @@ export const notFoundHandler: RequestHandler = (_req, _res, next) => next(notFou
 
 export const errorHandler: ErrorRequestHandler = (err, req, res, _next) => {
   void _next;
+  // Errors must never be stored by a CDN (public routes set a cacheable header earlier).
+  if (!res.headersSent) res.setHeader("Cache-Control", "no-store");
   if (err instanceof ZodError) {
     res.status(400).json({
       error: {

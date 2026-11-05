@@ -102,6 +102,14 @@ describe("content RBAC, publication workflow and validation", () => {
     expect(slugProbe.status).toBe(404);
   });
 
+  it("never lets a CDN cache error responses from public routes", async () => {
+    const res = await request(app).get("/api/v1/public/news/nao-existe");
+    expect(res.status).toBe(404);
+    expect(res.headers["cache-control"]).toBe("no-store");
+    const ok = await request(app).get("/api/v1/public/settings");
+    expect(ok.headers["cache-control"]).toContain("s-maxage");
+  });
+
   it("rejects manipulated identifiers", async () => {
     const editor = await login("ed7", "EDITOR");
     expect((await editor.get("/api/v1/admin/news/..%2F..%2FadminUsers")).status).toBe(404);
