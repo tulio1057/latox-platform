@@ -199,7 +199,7 @@ export function ResultsManager({ processId, onChange }: { processId: string; onC
         <p className="muted">Nenhum resultado cadastrado.</p>
       ) : (
         <div className="table-wrap">
-          <table className="table">
+          <table className="table table-cards">
             <thead>
               <tr>
                 <th scope="col">Resultado</th>

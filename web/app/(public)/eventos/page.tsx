@@ -80,7 +80,7 @@ export default async function EventsPage({ searchParams }: { searchParams: Promi
       <section className="section" style={{ paddingTop: 0 }}>
         <div className="container">
           {categories.length > 0 && (
-            <nav className="filters" aria-label="Filtrar por categoria">
+            <nav className="filters chip-row" aria-label="Filtrar por categoria">
               <Link className="chip" href={href()} aria-current={!category ? "true" : undefined}>
                 Todos
               </Link>
@@ -118,7 +118,7 @@ export default async function EventsPage({ searchParams }: { searchParams: Promi
                 )}
               </section>
             </div>
-            <aside style={{ position: "sticky", top: 100 }} aria-label="Calendário">
+            <aside className="events-calendar" aria-label="Calendário">
               <p className="eyebrow">
                 <IconCalendar size={16} /> Calendário
               </p>

@@ -109,7 +109,7 @@ export default function UsersPage() {
 
       <section className="panel">
         <div className="table-wrap">
-          <table className="table">
+          <table className="table table-cards">
             <thead>
               <tr>
                 <th scope="col">Pessoa</th>

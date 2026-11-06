@@ -68,7 +68,7 @@ function AuditInner() {
         </div>
       </div>
       <div className="table-wrap" style={{ marginTop: 16 }}>
-        <table className="table">
+        <table className="table table-cards">
           <thead>
             <tr>
               <th scope="col">Data/hora</th>

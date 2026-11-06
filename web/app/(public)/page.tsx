@@ -27,7 +27,12 @@ export default async function HomePage() {
         <Sprig className="hero-deco" size={300} style={{ right: "-60px", top: "-30px", opacity: 0.45 }} />
         <div className="container hero-grid">
           <div>
-            <span className="eyebrow rise">{s.tagline}</span>
+            {/* Phones: compact emblem + tagline instead of the large arch artwork. */}
+            <div className="hero-visual-mobile rise">
+              <img src={s.logoUrl ?? "/brand/logo-latox.jpg"} alt={`Logo oficial da ${s.shortName}`} width={76} height={76} />
+              <span className="eyebrow">{s.tagline}</span>
+            </div>
+            <span className="eyebrow rise hero-desktop-eyebrow">{s.tagline}</span>
             <h1 className="rise rise-2">
               {rest.length ? (
                 <>
@@ -68,7 +73,7 @@ export default async function HomePage() {
       </section>
 
       {/* ---------- Shortcuts ---------- */}
-      <section aria-label="Atalhos" style={{ paddingBottom: 72 }}>
+      <section aria-label="Atalhos" className="shortcuts" style={{ paddingBottom: 72 }}>
         <div className="container grid grid-4">
           {SHORTCUTS.map(({ href, title, text, Icon }) => (
             <Link key={href} href={href} className="shortcut">
@@ -115,7 +120,7 @@ export default async function HomePage() {
               </div>
             ))}
           </div>
-          <div className="grid grid-3" style={{ marginTop: 48 }}>
+          <div className="grid grid-3 pillars" style={{ marginTop: 48 }}>
             {[
               ["Ensino", s.teaching],
               ["Pesquisa", s.research],

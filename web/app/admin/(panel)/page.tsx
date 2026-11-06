@@ -99,7 +99,7 @@ export default function DashboardPage() {
             <h2>Últimas atividades</h2>
             {data.activity.length ? (
               <div className="table-wrap">
-                <table className="table">
+                <table className="table table-cards">
                   <thead>
                     <tr>
                       <th scope="col">Quando</th>

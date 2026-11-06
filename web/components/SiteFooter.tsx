@@ -15,7 +15,7 @@ export function SiteFooter({ settings }: { settings: SiteSettings }) {
           <p>{isPlaceholder(settings.footerText) ? settings.tagline : settings.footerText}</p>
           {!isPlaceholder(settings.institution) && <p>{settings.institution}</p>}
         </div>
-        <div>
+        <div className="footer-nav">
           <h2>Navegação</h2>
           <ul>
             {NAV.map((n) => (

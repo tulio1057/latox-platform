@@ -158,7 +158,7 @@ export default function ContentEditPage() {
             </div>
           )}
         </div>
-        <div className="toolbar">
+        <div className="toolbar editor-actions">
           <button type="button" className="btn btn-ghost" onClick={() => setPreview((v) => !v)} aria-pressed={preview}>
             {preview ? "Voltar à edição" : "Pré-visualizar"}
           </button>

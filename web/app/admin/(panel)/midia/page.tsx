@@ -133,7 +133,7 @@ export default function MediaPage() {
           </select>
         </div>
         <div className="table-wrap">
-          <table className="table">
+          <table className="table table-cards">
             <thead>
               <tr>
                 <th scope="col">Arquivo</th>

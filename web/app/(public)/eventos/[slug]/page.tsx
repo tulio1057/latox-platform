@@ -89,7 +89,7 @@ export default async function EventPage({ params }: { params: Promise<{ slug: st
               </section>
             )}
           </article>
-          <aside className="detail-aside">
+          <aside className="detail-aside first-on-mobile">
             <dl style={{ margin: 0, display: "grid", gap: 14 }}>
               <div>
                 <dt>Início</dt>

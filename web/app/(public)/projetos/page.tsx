@@ -15,7 +15,7 @@ export default async function ProjectsPage({ searchParams }: { searchParams: Pro
       <section className="section" style={{ paddingTop: 0 }}>
         <div className="container">
           {categories.length > 0 && (
-            <nav className="filters" aria-label="Filtrar por categoria">
+            <nav className="filters chip-row" aria-label="Filtrar por categoria">
               <Link className="chip" href="/projetos" aria-current={!category ? "true" : undefined}>
                 Todos
               </Link>

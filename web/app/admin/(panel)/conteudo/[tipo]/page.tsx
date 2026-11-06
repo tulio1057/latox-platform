@@ -91,7 +91,7 @@ export default function ContentListPage() {
         </form>
       </div>
       <div className="table-wrap" style={{ marginTop: 16 }}>
-        <table className="table">
+        <table className="table table-cards">
           <thead>
             <tr>
               <th scope="col">{cfg.titleField === "name" ? "Nome" : "Título"}</th>

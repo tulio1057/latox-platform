@@ -4,7 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 import { AdminProvider, useAdmin } from "@/components/admin/AdminProvider";
-import { IconMenu } from "@/components/icons";
+import { IconClose, IconMenu } from "@/components/icons";
 import { ROLE_LABELS, type Permission } from "@/lib/admin-config";
 
 const NAV: { group: string; items: { href: string; label: string; perm: Permission }[] }[] = [
@@ -35,16 +35,31 @@ function Shell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const [open, setOpen] = useState(false);
   useEffect(() => setOpen(false), [pathname]);
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (e: KeyboardEvent) => e.key === "Escape" && setOpen(false);
+    document.addEventListener("keydown", onKey);
+    document.documentElement.classList.add("menu-open");
+    return () => {
+      document.removeEventListener("keydown", onKey);
+      document.documentElement.classList.remove("menu-open");
+    };
+  }, [open]);
   const active = (href: string) => (href === "/admin" ? pathname === "/admin" : pathname.startsWith(href));
+  const current = NAV.flatMap((g) => g.items).find((i) => active(i.href));
 
   return (
     <div className="admin-shell">
       <div className="admin-topbar">
-        <strong>Painel LATox</strong>
-        <button className="menu-toggle" style={{ display: "inline-flex" }} aria-expanded={open} aria-controls="admin-sidebar" aria-label="Menu" onClick={() => setOpen((v) => !v)}>
-          <IconMenu />
+        <Link href="/admin" className="admin-topbar-brand" aria-label="Dashboard">
+          <img src="/brand/emblem.webp" alt="" width={28} height={35} />
+          <span>{current?.label ?? "Painel LATox"}</span>
+        </Link>
+        <button className="admin-menu-btn" aria-expanded={open} aria-controls="admin-sidebar" aria-label={open ? "Fechar menu" : "Abrir menu"} onClick={() => setOpen((v) => !v)}>
+          {open ? <IconClose /> : <IconMenu />}
         </button>
       </div>
+      {open && <div className="admin-backdrop" onClick={() => setOpen(false)} aria-hidden="true" />}
       <aside id="admin-sidebar" className="admin-sidebar" data-open={open}>
         <Link href="/admin" className="admin-brand">
           <img src="/brand/emblem.webp" alt="" />
